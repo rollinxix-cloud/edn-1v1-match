@@ -32,35 +32,54 @@ function calculateFees() {
     document.getElementById("calc-admin-profit").innerText = `Rs. ${totalAdminProfit}`;
 }
 
-// 2. Match Creation & LocalStorage Persistence
-function createMatch(event) {
+// 2. Open Challenge Creation
+function createChallenge(event) {
     event.preventDefault();
 
     const playerA = document.getElementById("player-a").value.trim();
-    const playerB = document.getElementById("player-b").value.trim();
     const stake = parseFloat(document.getElementById("match-stake").value) || 0;
     const refA = document.getElementById("ref-a").value.trim();
-    const refB = document.getElementById("ref-b").value.trim();
 
-    const newMatch = {
-        id: 'MATCH-' + Date.now(),
+    const newChallenge = {
+        id: 'CHALLENGE-' + Date.now(),
         playerA,
-        playerB,
+        playerB: null,
         stake,
         refA,
-        refB,
-        status: 'PENDING DEPOSITS',
+        refB: null,
+        status: 'OPEN CHALLENGE',
         winner: null,
         timestamp: new Date().toLocaleString()
     };
 
-    matches.unshift(newMatch);
+    matches.unshift(newChallenge);
     saveData();
     
-    document.getElementById("match-form").reset();
+    document.getElementById("challenge-form").reset();
     
     updateStats();
     renderDashboard();
+}
+
+// 3. Opponent Accepts Challenge Action
+function acceptChallengeModal(matchId) {
+    const target = matches.find(m => m.id === matchId);
+    if (!target) return;
+
+    const playerB = prompt(`Accepting challenge from ${target.playerA} (Stake: Rs. ${target.stake}).\nEnter your Player Name (Player B):`);
+    if (!playerB || !playerB.trim()) return;
+
+    const refB = prompt(`Enter your eSewa Ref ID for deposit (Stake Rs. ${target.stake} + Rs. 10 fee):`);
+    if (!refB || !refB.trim()) return;
+
+    target.playerB = playerB.trim();
+    target.refB = refB.trim();
+    target.status = 'PENDING DEPOSITS';
+
+    saveData();
+    updateStats();
+    renderDashboard();
+    alert("Challenge accepted! Admin will verify both deposit ref IDs shortly.");
 }
 
 function saveData() {
@@ -68,7 +87,7 @@ function saveData() {
 }
 
 function updateStats() {
-    document.getElementById("stat-total").innerText = matches.length;
+    document.getElementById("stat-open").innerText = matches.filter(m => m.status === 'OPEN CHALLENGE').length;
     document.getElementById("stat-active").innerText = matches.filter(m => m.status === 'FUNDS SECURED / MATCH ACTIVE').length;
     document.getElementById("stat-completed").innerText = matches.filter(m => m.status === 'COMPLETED').length;
 }
@@ -76,13 +95,14 @@ function updateStats() {
 function setFilter(filterType) {
     currentFilter = filterType;
     
-    ['all', 'pending', 'active', 'completed'].forEach(id => {
+    ['all', 'open', 'pending', 'active', 'completed'].forEach(id => {
         const el = document.getElementById(`filter-${id}`);
-        if(el) el.className = "px-4 py-1.5 rounded-lg text-xs font-bold tracking-wider uppercase transition text-slate-400 hover:text-white";
+        if(el) el.className = "px-3 py-1.5 rounded-lg text-xs font-bold tracking-wider uppercase transition text-slate-400 hover:text-white";
     });
 
     const activeIdMap = {
         'ALL': 'all',
+        'OPEN CHALLENGE': 'open',
         'PENDING DEPOSITS': 'pending',
         'FUNDS SECURED / MATCH ACTIVE': 'active',
         'COMPLETED': 'completed'
@@ -90,13 +110,13 @@ function setFilter(filterType) {
     
     const targetFilterElement = document.getElementById(`filter-${activeIdMap[filterType]}`);
     if(targetFilterElement) {
-        targetFilterElement.className = "px-4 py-1.5 rounded-lg text-xs font-bold tracking-wider uppercase transition bg-slate-800 text-white";
+        targetFilterElement.className = "px-3 py-1.5 rounded-lg text-xs font-bold tracking-wider uppercase transition bg-slate-800 text-white";
     }
 
     renderDashboard();
 }
 
-// 3. Admin Control Systems
+// 4. Admin Control Systems
 function loginAdmin() {
     const pass = document.getElementById("admin-password").value;
     if (pass === "admin123") {
@@ -141,7 +161,7 @@ function declareWinner(matchId, winnerName) {
 }
 
 function deleteMatch(matchId) {
-    if (confirm("Are you sure you want to permanently delete this escrow history record?")) {
+    if (confirm("Are you sure you want to permanently delete this escrow marketplace record?")) {
         matches = matches.filter(m => m.id !== matchId);
         saveData();
         updateStats();
@@ -149,17 +169,17 @@ function deleteMatch(matchId) {
     }
 }
 
-// 4. Copypaste Payout Receipt Automation Engine
+// 5. Copypaste Payout Receipt Automation Engine
 function generateReceipt(match) {
     const totalPot = match.stake * 2;
     const template = `🏆 MATCH COMPLETED: ${match.winner.toUpperCase()} WINS! 🏆\n` +
                      `----------------------------------------\n` +
-                     `⚔️ Grudge Match: ${match.playerA} vs ${match.playerB}\n` +
+                     `⚔️ P2P Grudge Match: ${match.playerA} vs ${match.playerB}\n` +
                      `💰 Total Stakes Secured: Rs. ${match.stake} each\n` +
                      `👑 Payout Grand Total: Rs. ${totalPot}\n` +
                      `🆔 Escrow Ref ID: ${match.id}\n` +
                      `----------------------------------------\n` +
-                     `⚡ Payout safely processed via eSewa by EDN (Easy Deposit Nepal) Escrow Engine. Clear proof verified!`;
+                     `⚡ Payout safely processed via eSewa by EDN (Easy Deposit Nepal) Escrow Engine.`;
 
     document.getElementById("receipt-box").value = template;
     document.getElementById("receipt-container").classList.remove("hidden");
@@ -183,7 +203,9 @@ function renderDashboard() {
     container.innerHTML = "";
 
     let dynamicDataset = matches.filter(match => {
-        const matchesSearch = match.playerA.toLowerCase().includes(searchVal) || match.playerB.toLowerCase().includes(searchVal);
+        const pA = match.playerA ? match.playerA.toLowerCase() : '';
+        const pB = match.playerB ? match.playerB.toLowerCase() : '';
+        const matchesSearch = pA.includes(searchVal) || pB.includes(searchVal);
         const matchesFilter = (currentFilter === 'ALL') || (match.status === currentFilter);
         return matchesSearch && matchesFilter;
     });
@@ -191,14 +213,16 @@ function renderDashboard() {
     if (dynamicDataset.length === 0) {
         container.innerHTML = `
             <div class="bg-slate-900/40 border border-slate-800/80 p-8 rounded-2xl text-center">
-                <p class="text-slate-500 font-medium text-sm">No escrow tracking listings found matching criteria configuration.</p>
+                <p class="text-slate-500 font-medium text-sm">No marketplace listings found matching criteria configuration.</p>
             </div>`;
         return;
     }
 
     dynamicDataset.forEach(match => {
         let badgeClass = "bg-amber-500/10 text-amber-400 border-amber-500/20";
-        if (match.status === 'FUNDS SECURED / MATCH ACTIVE') {
+        if (match.status === 'PENDING DEPOSITS') {
+            badgeClass = "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
+        } else if (match.status === 'FUNDS SECURED / MATCH ACTIVE') {
             badgeClass = "bg-blue-500/10 text-blue-400 border-blue-500/20 animate-pulse";
         } else if (match.status === 'COMPLETED') {
             badgeClass = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
@@ -207,6 +231,23 @@ function renderDashboard() {
         const card = document.createElement("div");
         card.className = "bg-slate-900/60 border border-slate-800 p-5 rounded-2xl space-y-4 relative overflow-hidden backdrop-blur-sm shadow-md";
         
+        let playerBSection = "";
+
+        if (match.status === 'OPEN CHALLENGE') {
+            playerBSection = `
+                <div class="col-span-3 bg-slate-950/40 border border-dashed border-slate-800 rounded-xl p-3 flex flex-col items-center justify-center text-center">
+                    <span class="text-xs text-amber-500 font-bold uppercase tracking-wider">Awaiting Opponent</span>
+                    <button onclick="acceptChallengeModal('${match.id}')" class="mt-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition uppercase tracking-wide">Accept Challenge</button>
+                </div>`;
+        } else {
+            playerBSection = `
+                <div class="col-span-3 bg-slate-950/60 border border-slate-800/60 rounded-xl p-3">
+                    <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Player B</div>
+                    <div class="text-base font-bold text-white tracking-wide truncate mt-0.5">${match.playerB}</div>
+                    <div class="text-[10px] text-slate-500 font-mono mt-1 select-all" title="Click to select Ref ID">Ref: ${match.refB}</div>
+                </div>`;
+        }
+
         let winDeclarationBlock = "";
         if (match.status === 'COMPLETED') {
             winDeclarationBlock = `
@@ -248,16 +289,12 @@ function renderDashboard() {
 
             <div class="grid grid-cols-7 gap-2 items-center text-center py-2">
                 <div class="col-span-3 bg-slate-950/60 border border-slate-800/60 rounded-xl p-3">
-                    <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Player A</div>
+                    <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Player A (Challenger)</div>
                     <div class="text-base font-bold text-white tracking-wide truncate mt-0.5">${match.playerA}</div>
                     <div class="text-[10px] text-slate-500 font-mono mt-1 select-all" title="Click to select Ref ID">Ref: ${match.refA}</div>
                 </div>
                 <div class="col-span-1 text-center font-bold text-slate-600 text-sm italic gaming-font">VS</div>
-                <div class="col-span-3 bg-slate-950/60 border border-slate-800/60 rounded-xl p-3">
-                    <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Player B</div>
-                    <div class="text-base font-bold text-white tracking-wide truncate mt-0.5">${match.playerB}</div>
-                    <div class="text-[10px] text-slate-500 font-mono mt-1 select-all" title="Click to select Ref ID">Ref: ${match.refB}</div>
-                </div>
+                ${playerBSection}
             </div>
 
             <div class="flex justify-between items-center bg-slate-950/40 p-3 rounded-xl border border-slate-800/40">
